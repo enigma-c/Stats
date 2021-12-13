@@ -1,0 +1,139 @@
+---
+title: "tweetse"
+author: "Leon Karreman"
+date: "11/24/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readr)
+library(tidyverse)
+library(quanteda) # quantitative analysis of textual data  (https://quanteda.io/articles/quickstart.html)
+library(quanteda.textplots) # complementary to quanteda, for visualization
+library(cld3) # for language detection
+library(lda) # implementation of Latent Dirichlet Allocation
+library(servr) # will be used for visualization
+# library(topicmodels) # alternative to lda, several topic models included
+library(stm) # for structural topic modeling
+set.seed(5528) # set seed for reproductibility
+```
+
+
+```{r cars}
+setwd("/home/leon/Downloads") 
+
+
+tweets<-read_csv('tweets_01-08-2021.csv',show_col_types = FALSE)
+```
+
+
+```{r}
+tweets$date=as.Date(tweets$date, '%yyyy-%mm-%dd')
+selectweets<-tweets[tweets$date >= "2020-01-01" & tweets$date  <= "2021-08-01",]
+```
+
+```{r}
+selectweets$newid=seq(1:6384)
+selectweets<-selectweets[selectweets$isRetweet==FALSE,]
+```
+
+
+```{r pressure, echo=FALSE}
+corpus <- corpus(selectweets, docid_field = 'newid', text_field = 'text')
+```
+
+```{r}
+languages <- detect_language(corpus)
+table(languages)
+```
+```{r}
+numspeechcorp <- ntoken(speechcorp)
+```
+
+```{r}
+
+data.frame(numspeechcorp) %>% ggplot(aes(numspeechcorp)) + geom_histogram(binwidth = 45) + xlab('Number of tokens')
+```
+
+
+
+
+```{r}
+stop<-c(stopwords("en"), 'go','said','people','know','right','like', 'year', 'get', 'one','never', 'ever', 'much', 'back','good','right','say','now','done','want','even','see','thank','great', 'guy','just','think','way','new','us','got','going','many','well','can','really','make','job','lot','take','come','tell','q','yeah','thing','look','happen','okay','something','look','mnuchin','birx','happen','keep','things','happens','happening','talks,','talking','getting','letting','opening', 'coming','president','presidential','beieve','believing','ahead', 'please','talk', 'agree','continue', 'specify', 'specific','use', 'using','rt','@realdonaldtrump','amp','vote','@foxnews','p.m')
+```
+
+```{r}
+#stemming
+speechcorp <- tokens(corpus, remove_punct = TRUE, remove_url = TRUE,
+                                          remove_symbols = TRUE, remove_numbers = TRUE) %>% 
+                            tokens_remove(stop) %>%
+                            tokens_wordstem() %>% 
+                            tokens_ngrams(c(1,2))%>%
+                            dfm() %>% 
+                            dfm_tolower()%>%
+                            dfm_trim(min_termfreq = 5, min_docfreq = 0.0025, docfreq_type = "prop")
+                            
+speechcorp
+textplot_wordcloud(speechcorp, random_order = FALSE, rotation = 0.25, 
+    color = RColorBrewer::brewer.pal(8, "Dark2"),max_words =150,max_size = 3)
+```
+
+
+```{r}
+topfeatures(speechcorp, 20)
+```
+```{r}
+covidDfmlda <- convert(speechcorp, to = "lda")
+```
+
+```{r}
+K <- 10 # number of topics
+G <- 2000 # number of iterations
+eta <- 1/K # Dirichlet hyperparamater for topic multinomials
+alpha <- 1/K # Dirichlet hyperparameter for topic proportions
+
+# fit the model
+t1 <- Sys.time()
+fit <- lda.collapsed.gibbs.sampler(documents = covidDfmlda$documents, K = K, 
+                                   vocab = covidDfmlda$vocab, 
+                                   num.iterations = G, alpha = alpha, 
+                                   eta = eta, initial = NULL, burnin = 0,
+                                   compute.log.likelihood = TRUE)
+t2 <- Sys.time()
+t2 - t1
+```
+
+```{r}
+top.topic.words(fit$topics,num.words=20)
+```
+
+```{r}
+library(quanteda) 
+library(topicmodels)
+library(LDAvis)
+library(stm)
+library(knitr) 
+library(lda)
+library(servr)
+```
+
+```{r}
+model<-stm(speechcorp, K=15, seed=123)
+```
+```{r}
+labelTopics(model)
+```
+```{r}
+prob<-model$theta
+prob<-t(prob)
+topdocs<-top.topic.documents(prob, num.documents = 5, alpha = 0.1)
+```
+
+```{r}
+topdocs[,10]
+```
+```{r}
+selectweets[selectweets$newid==804,2]
+```
+

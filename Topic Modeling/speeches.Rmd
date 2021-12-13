@@ -1,0 +1,173 @@
+---
+title: "trump"
+author: "Leon Karreman"
+date: "11/24/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readr)
+library(tidyverse)
+library(quanteda) # quantitative analysis of textual data  (https://quanteda.io/articles/quickstart.html)
+library(quanteda.textplots) # complementary to quanteda, for visualization
+library(cld3) # for language detection
+library(lda) # implementation of Latent Dirichlet Allocation
+library(servr) # will be used for visualization
+# library(topicmodels) # alternative to lda, several topic models included
+library(stm) # for structural topic modeling
+set.seed(5528) # set seed for reproductibility
+```
+
+
+```{r setup, }
+setwd("/home/leon/Documents/Statts/speeches") 
+
+
+
+```
+
+```{r}
+speeches<-read_csv('output_file.csv',show_col_types = FALSE)
+dates=c('28-01-2020','12-09-2020','20-06-2020','18-08-2020','19-09-2020','10-09-2020','28-08-2020','14-01-2020','13-03-2020','08-08-2020','28-02-2020','10-02-2020','15-04-2020','03-09-2020','19-02-2020','30-01-2020','01-06-2020','01-09-2020','20-02-2020','07-09-2020','11-03-2020','13-09-2020','17-09-2020','04-07-2020','08-09-2020','02-03-2020','23-04-2020','22-09-2020','18-09-2020','13-04-2020','21-02-2020','21-09-2020','05-11-2020')
+#dates<-str_split_fixed(speeches$FileName,pattern='(.{3}\\d\\d_\\d{4}(?=.txt$))',n=33)
+```
+```{r}
+speeches$dates=as.Date(dates,'%d-%m-%y')
+```
+
+
+```{r pressure, echo=FALSE}
+corpus <- corpus(speeches, docid_field = 'FileName', text_field = 'Content')
+```
+
+```{r}
+languages <- detect_language(corpus)
+table(languages)
+
+```
+
+```{r}
+numspeechcorp <- ntoken(corpus)
+```
+
+```{r}
+
+data.frame(numspeechcorp) %>% ggplot(aes(numspeechcorp)) + geom_histogram(binwidth = 45) + xlab('Number of tokens')
+```
+
+```{r}
+speechcorp<-tokens(corpus)
+```
+
+```{r}
+cloudspeechcorp<- dfm(speechcorp)
+```
+
+```{r}
+cloudspeechcorp
+```
+
+```{r}
+textplot_wordcloud(speechcorp, random_order = FALSE, rotation = 0.25, 
+    color = RColorBrewer::brewer.pal(8, "Dark2"))
+```
+```{r}
+stop<-c(stopwords("en"), 'go','said','people','know','right','like', 'year', 'get', 'one','never', 'ever', 'much', 'back','good','right','say','now','done','want','even','see','thank','great', 'guy','just','think','way','new','us','got','going','many','well','can','really','make','job','lot','take','come','tell','q','yeah','thing','look','happen','okay','something','look','mnuchin','birx','happen','keep','things','happens','happening','talks,','talking','getting','letting','opening', 'coming','president','presidential','beieve','believing','ahead', 'please','talk', 'agree','continue', 'specify', 'specific','use', 'using','also', 'large', 'show', 'thousand')
+```
+
+
+
+```{r}
+
+#stemming
+speechcorp <- tokens(corpus, remove_punct = TRUE, 
+                                          remove_symbols = TRUE, remove_numbers = TRUE) %>% 
+                            tokens_remove(stop) %>%
+                            tokens_wordstem() %>% 
+                            tokens_ngrams(c(1,2))%>%
+                            dfm() %>% 
+                            dfm_tolower()%>%
+                            dfm_trim(min_termfreq = 5, min_docfreq = 0.0025, docfreq_type = "prop")
+                            
+speechcorp
+textplot_wordcloud(speechcorp, random_order = FALSE, rotation = 0.25, 
+    color = RColorBrewer::brewer.pal(8, "Dark2"),max_words =150,max_size = 3)
+```
+
+
+```{r}
+topfeatures(speechcorp, 30)
+```
+```{r}
+covidDfmlda <- convert(speechcorp, to = "lda")
+```
+
+```{r}
+K <- 10 # number of topics
+G <- 2000 # number of iterations
+eta <- 1/K # Dirichlet hyperparamater for topic multinomials
+alpha <- 1/K # Dirichlet hyperparameter for topic proportions
+
+# fit the model
+t1 <- Sys.time()
+fit <- lda.collapsed.gibbs.sampler(documents = covidDfmlda$documents, K = K, 
+                                   vocab = covidDfmlda$vocab, 
+                                   num.iterations = G, alpha = alpha, 
+                                   eta = eta, initial = NULL, burnin = 0,
+                                   compute.log.likelihood = TRUE)
+t2 <- Sys.time()
+t2 - t1
+```
+
+```{r}
+top.topic.words(fit$topics,num.words=20)
+```
+
+```{r}
+library(quanteda) 
+library(topicmodels)
+library(LDAvis)
+library(stm)
+library(knitr) 
+library(lda)
+library(servr)
+```
+
+```{r}
+model<-stm(speechcorp, prevalence = ~dates,  K=5, seed=123)
+```
+
+
+```{r}
+
+labelTopics(model)
+
+```
+```{r}
+plot(model)
+```
+```{r}
+prob<-as.data.frame(model$theta)
+#prob<-t(prob)
+prob$dates=as.Date(dates,'%d-%m-%y')
+```
+```{r}
+prob<-prob[order(prob$dates),]
+write.csv(prob,"prob.csv", row.names = FALSE)
+```
+
+```{r}
+print(speeches[9,'Content'])
+```
+```{r}
+prob
+```
+```{r}
+
+#speeches$dates<-as.numeric(speeches$dates)
+#attach(speeches)
+#estimate<-estimateEffect(~dates, model)
+plot.estimateEffect(estimate, covariate='dates',method='continuous',topics=3,model='frex')
+```
+

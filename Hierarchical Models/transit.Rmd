@@ -1,0 +1,167 @@
+---
+title: "hierarchical"
+author: "Leon Karreman"
+date: "12/7/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+setwd('/home/leon/Downloads')
+library(readr)
+library(tidyverse)
+library(lubridate)
+library(tidyr)
+
+dat1<-read_csv('transit.csv',col_names=FALSE, col_select=-1)
+setwd("/home/leon/Documents/Statts/speeches") 
+prob<-read_csv('prob.csv')
+
+```
+
+
+## R Markdown
+
+
+```{r}
+data<-dat1[,-1]
+```
+
+```{r}
+
+data<-t(data)
+data<-as.data.frame(data)
+#data<-data[2:602,1:51]
+
+
+
+```
+```{r}
+data$V1<-as.Date(data$V1)
+```
+
+```{r}
+
+attach(data)
+```
+
+```{r cars}
+
+
+plot(data$V2)
+```
+```{r}
+matrix=as.data.frame(matrix(, nrow = 0, ncol = 51))
+```
+
+```{r}
+dates=c('28-01-2020','12-09-2020','20-06-2020','18-08-2020','19-09-2020','10-09-2020','28-08-2020','14-01-2020','13-03-2020','08-08-2020','28-02-2020','10-02-2020','15-04-2020','03-09-2020','19-02-2020','30-01-2020','01-06-2020','01-09-2020','20-02-2020','07-09-2020','11-03-2020','13-09-2020','17-09-2020','04-07-2020','08-09-2020','02-03-2020','23-04-2020','22-09-2020','18-09-2020','13-04-2020','21-02-2020','21-09-2020','05-11-2020')
+
+
+```
+
+
+
+
+```{r}
+for (i in seq(1:33)) {
+for (date in dates[i]) {
+  new= data[data$V1 > dmy(date) & data$V1 <= dmy(date)+days(3),]
+  matrix=rbind(matrix, new)
+  
+} }
+
+```
+
+
+
+```{r}
+realmatrix<-lapply(matrix[-1], as.numeric)
+realmatrix<-as.data.frame(realmatrix)
+```
+
+```{r}
+n <- 3;
+realmatrix<-aggregate(realmatrix, list(rep(1:(nrow(matrix) %/% n + 1), each = n, len = nrow(matrix))), mean)[-1]
+
+```
+```{r}
+
+
+realdf<-c(prob[-c(1:4),], realmatrix)
+
+```
+```{r}
+realdf<-as.data.frame(realdf)
+```
+```{r}
+statenames<-dat1[["X2"]]
+statenames <- statenames[-1]
+#statenames<-as.character(statenames)
+```
+
+add statenames as columns 
+```{r}
+statenames<-as.character(statenames)
+setnames(realdf, old=c(colnames(realdf[-c(1:6)])),new=c(statenames))
+```
+
+```{r}
+model<-lm(matrix$V47~prob$V3+prob$V1+prob$V2+prob$V5+prob$V4)
+summary(model)
+```
+```{r}
+newdata<-data.frame(realdf[1:6], stack(realdf[7:53]))
+```
+
+
+```{r}
+library(lmerTest)
+
+```
+```{r}
+scalevalues<-as.data.frame(scale(newdata[c(1,3)]))
+newdata$V3<-scalevalues$V3
+newdata$values=scalevalues$values
+```
+
+
+
+```{r}
+(fe<- lmer(formula=values ~1+V1+V2+ V3+(1+V2+V3+V1|ind), data=newdata))
+```
+
+```{r}
+summary(fe)
+```
+```{r}
+coefs<-coef(fe)$ind
+
+
+```
+
+```{r}
+coefs<-as.data.frame(coefs)
+```
+```{r}
+lmodel<-lm(values~V3+V1+V2+V4+V5,data=newdata)
+summary(lmodel)
+```
+lets perform Bayesian analyis now
+```{r}
+library(blme)
+```
+```{r}
+bfe<-blmer(formula=values ~ V3+V4+V5+(V3|ind), data=newdata)
+```
+```{r}
+relative=prob$V1+prob$V2+prob$V4+prob$V5
+
+relative=prob$V3/relative
+```
+
+```{r}
+model=lm(realdf$`New Mexico`~relative)
+```
+
+
+

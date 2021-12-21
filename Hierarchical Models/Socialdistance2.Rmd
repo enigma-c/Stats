@@ -1,0 +1,352 @@
+---
+title: "hierarchical"
+author: "Leon Karreman"
+date: "12/7/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(readr)
+library(tidyverse)
+library(lubridate)
+library(tidyr)
+
+dat1<-read_csv('/Users/rebeccajones/Documents/Statistical Modelling and Inference/Stats project/Stats_project/Data/Social_distancing_index_ST.csv',col_names=FALSE, col_select=-1)
+#setwd("/home/leon/Documents/Statts/speeches") 
+prob<-read_csv('/Users/rebeccajones/Documents/Statistical Modelling and Inference/Stats project/Stats_project/Data/prob2.csv')
+distance_measures <- read_excel("/Users/rebeccajones/Documents/Statistical Modelling and Inference/Stats project/Stats_project/Data/OxCGRTUS_timeseries_all.xlsx")
+```
+
+
+Reading and cleaning strictness of restriction measures dataset
+```{r}
+library(tibble)
+library(anytime)
+measures <- t(distance_measures)
+measures <- as.data.frame(measures)
+measures <- tibble::rownames_to_column(measures, "date")
+measures <- as.data.table(measures)
+measures <- measures[-(1:5)]
+measures$date <- paste0(substr(measures$date,1,2), "-",substr(measures$date,3,5),"-",substr(measures$date,6,9))
+measures$date <- dmy(measures$date)
+```
+
+```{r}
+setnames(measures, old=c(colnames(measures[,-1])),new=c(statenames))
+```
+
+```{r}
+speechdates=c('12-09-2020','20-06-2020','18-08-2020','19-09-2020','10-09-2020','28-08-2020','13-03-2020','08-08-2020','28-02-2020','15-04-2020','03-09-2020','19-02-2020','01-06-2020','01-09-2020','20-02-2020','07-09-2020','11-03-2020','13-09-2020','17-09-2020','04-07-2020','08-09-2020','02-03-2020','23-04-2020','22-09-2020','18-09-2020','13-04-2020','21-02-2020','21-09-2020','05-11-2020')
+```
+
+
+```{r}
+measures_reduced <- NULL
+for (i in speechdates) {
+  temp <- measures[date >= as.Date(i, format = "%d-%m-%y") & date <= (as.Date(i, format = "%d-%m-%y") +3 )][,speech_date := i]
+  measures_reduced <- rbind(measures_reduced,temp)
+  }
+
+```
+
+
+```{r}
+av_measures = melt(measures_reduced, id.vars = c("date","speech_date"))
+av_measures$value <- as.numeric(av_measures$value)
+av_measures <- av_measures[,mean(value), by = c("variable", "speech_date")]
+setnames(av_measures, c("V1", "variable"), c("strictness_measure", "state"))
+av_measures$speech_date <- as.Date(av_measures$speech_date, format = "%d-%m-%y")
+
+
+```
+
+reading in Covid cases and cleaning data:
+```{r}
+getwd()
+library(data.table)
+library(tidyverse)
+
+dat1<-read.csv("/Users/rebeccajones/Documents/Statistical Modelling and Inference/Stats project/Stats_project/Data/Covid19_cases.csv")
+covid_cases <- data.table(dat1)
+covid_cases$submission_date <- as.Date(covid_cases$submission_date, format = "%m/%d/%y")
+covid_cases$new_case <- as.numeric(gsub(",","",covid_cases$new_case))
+covid_cases$new_case <- as.numeric(covid_cases$new_case)
+covid_cases <- covid_cases[order(submission_date)][!is.na(submission_date),]
+
+min(covid_cases$submission_date)
+speechdates=c('12-09-2020','20-06-2020','18-08-2020','19-09-2020','10-09-2020','28-08-2020','13-03-2020','08-08-2020','28-02-2020','15-04-2020','03-09-2020','19-02-2020','01-06-2020','01-09-2020','20-02-2020','07-09-2020','11-03-2020','13-09-2020','17-09-2020','04-07-2020','08-09-2020','02-03-2020','23-04-2020','22-09-2020','18-09-2020','13-04-2020','21-02-2020','21-09-2020','05-11-2020')
+
+us_states<-read.csv("/Users/rebeccajones/Documents/Statistical Modelling and Inference/Stats project/Stats_project/Data/states_us.csv")
+us_states <- data.table(us_states[,c(1,2)])
+grocery<-read.csv("/Users/rebeccajones/Documents/Statistical Modelling and Inference/Stats project/Stats_project/Data/grocery.csv")
+uniqueN(grocery$NAME)
+covid_cases <- merge.data.table(covid_cases, us_states, by.x = "state", by.y = "state_key")
+uniqueN(covid_cases$state.y)
+
+
+reduced <- NULL
+for (i in speechdates) {
+  temp <- covid_cases[submission_date < as.Date(i, format = "%d-%m-%y") & submission_date >= (as.Date(i, format = "%d-%m-%y")-7)][,speech_date := i]
+  reduced <- rbind(reduced,temp)
+  }
+
+
+av_covid_cases <- reduced[,sum(new_case), by = c("state.y", "state", "speech_date")]
+av_covid_cases <- setnames(av_covid_cases, "V1", "covid_cases")
+av_covid_cases$speech_date <- as.Date(av_covid_cases$speech_date, format = "%d-%m-%y")
+
+```
+
+
+
+
+
+```{r}
+prob<-prob[1:33,]
+prob$dates<-as.Date(prob$dates,'%d-%m-%y')
+prob <-prob[order(prob$dates),]
+data<-dat1[,-1]
+```
+
+
+```{r}
+
+data<-t(data)
+data<-as.data.frame(data)
+#data<-data[2:602,1:51]
+data$V1<-parse_date_time(data$V1,order='mdy')
+```
+
+
+```{r}
+attach(data)
+```
+
+
+```{r}
+matrix=as.data.frame(matrix(, nrow = 0, ncol = 52))
+```
+
+!!! dont need this if you're not looking at social distancing measures!! calculating the average change in the social distancing measures
+```{r}
+data[,-1] <- as.numeric(unlist(data[,-1]))
+data <- as.data.table(data)
+for (i in 1:7) {
+  base_soc_dist <- data[seq(i, 42, 7), day := i]
+}
+
+base_soc_dist <- base_soc_dist[,-1]
+base_soc_dist <- base_soc_dist[-1,]
+base_soc_dist <- base_soc_dist[,lapply(.SD, mean), by = day]
+base_soc_dist <- base_soc_dist[-8,]
+
+for (i in 1:7) {
+  data <- data[seq(i, nrow(data), 7), day := i]
+}
+
+for (j in 2:(ncol(test)-1)) {
+  for (i in (1:7)) {
+    a <- as.numeric(base_soc_dist[day == i, ..j])
+    data[day == i,j]  <- (data[day == i,..j] - a)/a
+  }
+}
+data <- data[,day := NULL]
+
+```
+
+
+
+```{r}
+dates=c('12-09-2020','20-06-2020','18-08-2020','19-09-2020','10-09-2020','28-08-2020','13-03-2020','08-08-2020','28-02-2020','15-04-2020','03-09-2020','19-02-2020','01-06-2020','01-09-2020','20-02-2020','07-09-2020','11-03-2020','13-09-2020','17-09-2020','04-07-2020','08-09-2020','02-03-2020','23-04-2020','22-09-2020','18-09-2020','13-04-2020','21-02-2020','21-09-2020','05-11-2020')
+
+```
+
+
+```{r}
+data <- as.data.table(data)
+new <- NULL
+for (i in seq(1:29)) {
+for (date in dates[i]) {
+  new <- data[data$V1 > dmy(date) & data$V1 <= dmy(date)+days(3),]
+  new <- new[,speech_date := dmy(date)]
+  matrix=rbind(matrix, new)
+  
+} }
+
+
+```
+
+
+
+```{r}
+matrix<-as.data.frame(matrix)
+matrix[,-c(1,53)]<-lapply(matrix[,-c(1,53)], as.numeric)
+realmatrix <- matrix[-1]
+```
+
+
+
+Taking mean of every three rows 
+```{r}
+realmatrix <- as.data.table(realmatrix)
+realmatrix <- realmatrix[,lapply(.SD, mean), by = speech_date]
+```
+
+Selecting all Covid topic proportions
+```{r}
+prob<-prob[-c(1:4),]
+prob <- prob[,-1]
+```
+
+
+```{r}
+realdf<-merge(prob, realmatrix, by.x = "dates", by.y = "speech_date")
+```
+
+```{r}
+realdf<-as.data.frame(realdf)
+```
+
+
+
+
+```{r}
+statenames<-dat1[["X2"]]
+statenames <- statenames[-1]
+#statenames<-as.character(statenames)
+```
+
+add statenames as columns 
+```{r}
+statenames<-as.character(statenames)
+setnames(realdf, old=c(colnames(realdf[-c(1:5)])),new=c(statenames))
+```
+
+```{r}
+model<-lm(matrix$V47~prob$V3+prob$V1+prob$V2+prob$V5+prob$V4)
+summary(model)
+```
+
+when including all topic proportions:
+```{r}
+newdata<-data.frame(realdf[1:5], stack(realdf[6:ncol(realdf)]))
+setnames(newdata, c("X3", "ind"), c("Covid_topic_prop", "state"))
+setnames(newdata, "values", "observed")
+```
+
+for including just the Covid topic proportions:
+```{r}
+newdata<-data.frame(realdf[1:2], stack(realdf[3:ncol(realdf)]))
+setnames(newdata, c("V3", "ind"), c("Covid_topic_prop", "state"))
+setnames(newdata, "values", "observed")
+```
+
+adding in the Covid cases as a control,
+```{r}
+combined <-merge(newdata, av_covid_cases, by.x = c("state", "dates"), by.y = c("state.y","speech_date"))
+```
+
+and then adding in the strictness of lockdown as a control,
+```{r}
+combined <-merge(combined, av_measures, by.x = c("state", "dates"), by.y = c("state","speech_date"))
+```
+
+scaling the predictor variables,
+```{r}
+library(lmerTest)
+combined[c(3:6,9,10)]<-scale(combined[c(3:6,9,10)])
+```
+
+scaling the predictor variables,
+```{r}
+combined$Covid_topic_prop<-scale(combined$Covid_topic_prop)
+combined$covid_cases<-scale(combined$covid_cases)
+combined$strictness_measure <- scale(combined$strictness_measure)
+```
+
+```{r}
+combined[c(3:6,9,10)]<-scale(combined[c(3:6,9,10)])
+```
+
+hierarchical model with the different topics 
+```{r}
+(fe<- lmer(formula=values ~V1+V2+ V3+V4+V5+(V3+V1+V2+V4||ind), data=newdata))
+```
+
+hierarchical model with the covid topic proportions. The covid cases are a control
+```{r}
+fe<- lmer(formula=observed ~Covid_topic_prop+covid_cases+(Covid_topic_prop+covid_cases|state), data=combined, control = lmerControl(optimizer ="Nelder_Mead"))
+```
+
+Hierarchical model with the covid topic proportions. The covid cases and the strictness of lockdown per state are the controls. !!table 2 fallacy!!
+```{r}
+fe<- lmer(formula=observed ~Covid_topic_prop+covid_cases+strictness_measure+(Covid_topic_prop+covid_cases+strictness_measure|state), data=combined, control = lmerControl(optimizer ="bobyqa"))
+```
+
+```{r}
+summary(fe)
+```
+
+We find a significant result in the covid topic proportions having an effect on the social distancing index. This produced an estimate of 0.91.  
+```{r}
+coefs<-coef(fe)$state
+coefs
+
+```
+
+```{r}
+X2016ElectionResults <- read_csv("/Data/2016ElectionResults.csv")
+X2016ElectionResults <- X2016ElectionResults[,c(1,7)]
+```
+
+```{r}
+library(tibble)
+coefs <- tibble::rownames_to_column(coefs, "state")
+coefs <- merge(coefs, X2016ElectionResults, by.x = "state", by.y = "State", all = TRUE)
+coefs <- as.data.table(coefs)
+coefs <- coefs[is.na(win), win := "D"]
+coefs
+```
+
+Calculating the difference in Republican and Democratic states, we note the difference in coefficient values of the covid topic proportions:
+
+```{r}
+mean(coefs[win == "R",]$Covid_topic_prop) - mean(coefs[win == "D",]$Covid_topic_prop)
+```
+
+
+
+
+
+
+```{r}
+coefs<-as.data.frame(coefs)
+```
+```{r}
+lmodel<-lm(values~V3+V1+V2+V4+V5,data=newdata)
+summary(lmodel)
+```
+lets perform Bayesian analyis now
+```{r}
+library(blme)
+```
+```{r}
+bfe<-blmer(formula=values ~ V3+V4+V5+(V3|ind), data=newdata)
+```
+```{r}
+relative=prob$V1+prob$V2+prob$V4+prob$V5
+
+relative=prob$V3/relative
+```
+
+```{r}
+model=lm(realdf$`New Mexico`~relative)
+```
+
+```{r}
+combined <- as.data.table(combined)
+combined <- combined[,state.y := NULL]
+write.csv(combined, file = "/Users/rebeccajones/Documents/Statistical Modelling and Inference/Stats project/Stats_project/Data/Social_distancing_model_data.csv")
+```
+
+
